@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>License Time Check</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            text-align: center;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border: 2px solid #00c8ff;
+            border-radius: 10px;
+            width: 600px;
+            height: 200px;
+        }
+        #time {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        #status {
+            font-size: 20px;
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="time">Fetching time...</div>
+        <div id="status">Awaiting License Key</div>
+    </div>
+    <script>
+        let currentDate = null;
+        const validLicenses = [
+            "rakunR",
+            "key456xyz",
+            "secure789",
+            "rico2025",
+            "authkey101"
+        ];
+
+        // Function to get the resource name safely
+        function getResourceName() {
+            try {
+                return window.GetParentResourceName ? GetParentResourceName() : 'license_check';
+            } catch (e) {
+                console.warn('GetParentResourceName not defined, using fallback');
+                return 'license_check'; // Fallback resource name
+            }
+        }
+
+        // Function to fetch current time from an external API
+        async function fetchTime() {
+            try {
+                const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
+                const data = await response.json();
+                currentDate = new Date(data.datetime);
+                updateTimeDisplay();
+                // Send the date back to Lua via NUI callback
+                sendDateToLua();
+            } catch (error) {
+                console.error('Error fetching time:', error);
+                document.getElementById('time').innerText = 'Error fetching time';
+                document.getElementById('status').innerText = 'Connection error';
+            }
+        }
+
+        // Update the displayed time every second
+        function updateTimeDisplay() {
+            if (currentDate) {
+                document.getElementById('time').innerText = `Current Time: ${currentDate.toISOString()}`;
+            }
+        }
+
+        // Send the date to Lua
+        function sendDateToLua() {
+            if (currentDate) {
+                const dateObj = {
+                    year: currentDate.getUTCFullYear(),
+                    month: currentDate.getUTCMonth() + 1, // Months are 0-based in JS
+                    day: currentDate.getUTCDate(),
+                    hour: currentDate.getUTCHours(),
+                    minute: currentDate.getUTCMinutes(),
+                    second: currentDate.getUTCSeconds()
+                };
+                fetch(`https://${getResourceName()}/receiveDate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dateObj)
+                }).catch(error => {
+                    console.error('Error sending date to Lua:', error);
+                });
+            }
+        }
+
+        // Send the license keys to Lua
+        function sendLicensesToLua() {
+            fetch(`https://${getResourceName()}/receiveLicenses`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ licenses: validLicenses })
+            }).catch(error => {
+                console.error('Error sending licenses to Lua:', error);
+            });
+        }
+
+        // Fetch time initially and every second
+        fetchTime();
+        setInterval(fetchTime, 1000);
+
+        // Send licenses initially
+        sendLicensesToLua();
+
+        // Listen for status updates from Lua
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'updateStatus') {
+                document.getElementById('status').innerText = event.data.message;
+                if (event.data.message.includes('EXPIRED') || event.data.message.includes('INVALID')) {
+                    document.getElementById('status').style.color = '#ff0000';
+                } else if (event.data.message.includes('GRANTED')) {
+                    document.getElementById('status').style.color = '#00ff00';
+                } else if (event.data.message.includes('ATTEMPT')) {
+                    document.getElementById('status').style.color = '#ffff00';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
